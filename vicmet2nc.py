@@ -10,7 +10,7 @@ import numpy as np
 import glob
 import os
 import datetime
-import time
+import time as tm
 
 def main():
     (inpath, ncfile, domain, precision, start, end, ncformat) = get_args()
@@ -106,8 +106,8 @@ def parse_domain(str):
     domain['south'] = fields[3]
     domain['north'] = fields[4]
     domain['latres'] = fields[5]
-    domain['nx'] = int((domain['east']-domain['west'])/domain['lonres'])
-    domain['ny'] = int((domain['north']-domain['south'])/domain['latres'])
+    domain['nx'] = int((domain['east']-domain['west'])/domain['lonres'])+1
+    domain['ny'] = int((domain['north']-domain['south'])/domain['latres'])+1
 
     return domain
 
@@ -175,6 +175,9 @@ def write_netcdf(ncfile, format, start, ndays, domain, data):
     for var in attrtable.iterkeys():
         for attr in attrtable[var].iterkeys():
             nc.variables[var].setncattr(attr, attrtable[var][attr])
+
+    nc.history = 'Created: {}\n'.format(tm.ctime(tm.time()))
+    nc.history += ' '.join(sys.argv) + '\n'
 
     nc.close()
 

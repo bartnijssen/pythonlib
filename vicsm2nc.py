@@ -29,7 +29,7 @@ def main():
         x = int((lon-domain['west'])/domain['lonres'])
         y = int((lat-domain['south'])/domain['latres'])
         if (x >= 0) & (x < domain['nx']) & (y >= 0) & (y < domain['ny']):
-            print "Ingesting: {}".format(file)
+            # print "Ingesting: {}".format(file)
             indata = np.loadtxt(file, dtype=None)
             data['sm'][:,y,x] = indata[:,3]
 

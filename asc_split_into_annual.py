@@ -38,7 +38,7 @@ for i in range(nyears):
 
 # loop over all the files
 for infile in filelist:
-    print infile
+    # print infile
     data = np.loadtxt(infile, dtype='S')
     filename = os.path.basename(infile)
     for i in range(nyears):

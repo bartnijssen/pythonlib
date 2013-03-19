@@ -15,9 +15,12 @@ import sys
 import subprocess
 import tempfile
 
-ncra = '/opt/local/bin/ncra'
-ncrcat = '/opt/local/bin/ncrcat'
-ncks = '/opt/local/bin/ncks'
+# note that I am using nco 4.2.1 instead of the newer nco 4.3.x in
+# /opt/local/bin since the latter seems to have a bug in ncks
+# subsetting
+ncra = '/usr/local/bin/ncra'
+ncrcat = '/usr/local/bin/ncrcat'
+ncks = '/usr/local/bin/ncks'
 
 def main():
     ncin, ncout = get_args()
@@ -48,14 +51,14 @@ def main():
         returnval = subprocess.call(fargs)
         if returnval != 0:
             sys.exit('Error executing: {}'.format(' '.join(fargs)))
-            
+
     for file in tobedeleted:
         try:
             os.remove(file)
         except OSError as e:
             print 'Error removing file: {}'.format(e)
             pass
-            
+
     return
 
 def flatten(*args):
@@ -75,7 +78,7 @@ def get_args():
     parser.add_argument('--output', required=True, metavar='<output netcdf file>',
                         help='netcdf file (output)')
     args = parser.parse_args()
-            
+
     return (args.input, args.output)
 
 
@@ -98,7 +101,7 @@ def get_tempfilename(suffix='.tmp'):
         outsock = os.fdopen(fh,'w')
         outsock.close()
         return fname
-        
+
 def remove_file(file):
     try:
         os.remove(file)
@@ -106,6 +109,6 @@ def remove_file(file):
         print 'Error removing file: {}'.format(e)
         pass
 
-    
+
 if __name__ == "__main__":
     main()
