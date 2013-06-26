@@ -1,5 +1,6 @@
 #!/usr/bin/env python
-"""Determine the contributing area for each station in a station file
+"""
+Determine the contributing area for each station in a station file
 
 Calculate the upstream contributing area for each station in a station file given a flow direction, flow fraction and station file.
 
@@ -32,7 +33,7 @@ class FileError(Exception):
 
     def __str__(self):
         return repr("Error in \"" + self.filename + "\": " + self.msg)
-        
+
 def main():
     parser = argparse.ArgumentParser(description='Calculate contributing area '
                                      'for each station in a station file. All '
@@ -48,7 +49,7 @@ def main():
                         help='flow direction file')
     parser.add_argument('fractionfile', metavar='<fractionfile>',
                         help='fraction file')
-    
+
     args = parser.parse_args()
 
     # Read the files
@@ -77,17 +78,17 @@ def main():
         totalarea = (mask * areas).sum()
         print id, ":", totalarea/4046.85642, "acres,", totalarea/2589988.11, "miles^2,", totalarea/1000000., "km^2"
         mask.tofile(id+'.save.txt', sep=' ')
-        
+
 def calculate_area_vicrouting(centerlat, resolution):
     """Calculate the cell area according to the VIC routing model"""
     earth_radius = 6371229.0
     resolution = math.radians(resolution)
     centerlat = math.radians(centerlat)
-    area = (math.pow(earth_radius, 2) * resolution * 
+    area = (math.pow(earth_radius, 2) * resolution *
             abs(math.sin(centerlat - 0.5*resolution) -
                 math.sin(centerlat + 0.5*resolution)))
     return area
-    
+
 def mask_contributing(record, directions, flowdirections=arcdirections):
     directions = directions.astype(np.int32)
     alloweddirections = flowdirections.keys()
@@ -120,13 +121,13 @@ def mask_contributing(record, directions, flowdirections=arcdirections):
                     diropposite[dir]):
                     upstream.append((orow, ocol))
                     #                    print "\t\tAppended", orow, ocol
-        
+
     return mask
-    
+
 def parse_stationfile(infile):
     """Parse a VIC station file and return a dict of stations"""
     stations = {};
-    
+
     with open(infile, 'r') as f:
         contents = f.readlines()
 
@@ -140,7 +141,7 @@ def parse_stationfile(infile):
 
     if len(contents)%2 != 0:
         raise FileError(infile, "Expectation is two lines per station")
-    
+
     # Need to process two lines at a time
     for i in range(0,len(contents),2):
         fields = contents[i].split()
@@ -150,7 +151,7 @@ def parse_stationfile(infile):
         stations[station] = {}
         stations[station]['col'] = int(fields[2])
         stations[station]['row'] = int(fields[3])
-        stations[station]['uhs'] = contents[i+1]        
+        stations[station]['uhs'] = contents[i+1]
     return stations
 
 def parse_gridasciifile(infile):
@@ -175,8 +176,8 @@ def parse_gridasciiheader(infile, headerlines=archeaderlines):
     contents[:] = [line.strip() for line in contents]
     return dict([line.lower().split() for line in contents])
 
-    
-    
-    
+
+
+
 if __name__ == "__main__":
     main()

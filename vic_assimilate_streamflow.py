@@ -5,6 +5,7 @@ import os
 import vic.assimilate as va
 from utils.parse import parse_date
 
+
 def parse_commandline():
     parser = argparse.ArgumentParser(description='Update VIC state file '
                                      'based on assimilation of observed '
@@ -19,8 +20,7 @@ def parse_commandline():
     parser.add_argument('--config', required=True,
                         metavar='<configuration file>',
                         help='Configuration file')
-                    
-    
+
     args = parser.parse_args()
 
     forecastdate = parse_date(args.date, '-')
@@ -29,9 +29,9 @@ def parse_commandline():
     configparser.read(os.path.expanduser(args.config))
     config = {}
     for section in configparser.sections():
-        for key,value in configparser.items(section):
+        for key, value in configparser.items(section):
             config[key] = value
-            
+
     config['timeofconcentration'] = int(config['timeofconcentration'])
     config['latlondigits'] = int(config['latlondigits'])
 
@@ -40,10 +40,11 @@ def parse_commandline():
 
     return (forecastdate, stations, config)
 
+
 def main():
 
     (forecastdate, stations, config) = parse_commandline()
-    
+
     stationinfo = va.assimilate_streamflow(forecastdate=forecastdate,
                                            stationdict=stations,
                                            statetemplate=config['statetemplate'],

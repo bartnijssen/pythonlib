@@ -29,6 +29,7 @@ ncrcat = '/opt/local/bin/ncrcat'
 ncap = '/opt/local/bin/ncap'
 ncatted = '/opt/local/bin/ncatted'
 
+
 def main():
     parser = argparse.ArgumentParser(description='Postprocess the daily VIC '
                                      'files from RASM simulations')
@@ -62,10 +63,10 @@ def main():
     if not os.path.exists(args.destdir):
         os.makedirs(args.destdir)
 
-    tobedeleted = [];
+    tobedeleted = []
     # Change the time stamp of the daily files and fix time axis
     filedate = startdate
-    newfiledate = filedate + datetime.timedelta(days = -1)
+    newfiledate = filedate + datetime.timedelta(days=-1)
     while filedate <= enddate:
         if leapcal == 'noleap' and filedate.month == 2 and filedate.day == 29:
             filedate += datetime.timedelta(days=1)
@@ -100,7 +101,7 @@ def main():
 
     # Create monthly and annual average using ncra (note that only whole months
     # and years will be averaged)
-    firstdate = startdate + datetime.timedelta(days = -1)
+    firstdate = startdate + datetime.timedelta(days=-1)
     if (firstdate.day != 1):
         day = 1
         month = firstdate.month + 1
@@ -109,7 +110,7 @@ def main():
             month = 1
             year += 1
         firstdate = datetime.date(year, month, day)
-    lastdate = enddate + datetime.timedelta(days = -1)
+    lastdate = enddate + datetime.timedelta(days=-1)
     day = lastdate.day
     daysinmonth = calendar.monthrange(lastdate.year, lastdate.month)[1]
     if leapcal == 'noleap' and lastdate.month == 2:
@@ -143,7 +144,7 @@ def main():
             sys.exit('Error executing: {}'.format(' '.join(fargs)))
         ndays = calendar.monthrange(currentdate.year, currentdate.month)[1]
         lastmonth = currentdate
-        currentdate += datetime.timedelta(days = ndays)
+        currentdate += datetime.timedelta(days=ndays)
 
     # time series of monthly means
     fileglob = '{0}.vic.ha.????-??.mean.nc'.format(args.casename)
@@ -201,7 +202,7 @@ def main():
         currentyear += 1
 
     # cleanup
-    if args.delete == True:
+    if args.delete is True:
         print 'Cleanup: Deleting original and merged files'
         tobedeleted = list(flatten(tobedeleted))
         for file in tobedeleted:
@@ -211,6 +212,7 @@ def main():
                 print 'Error removing file: {}'.format(e)
                 pass
 
+
 def flatten(*args):
     for x in args:
         if hasattr(x, '__iter__'):
@@ -218,6 +220,7 @@ def flatten(*args):
                 yield y
         else:
             yield x
+
 
 def parse_date(datestr, sep='-'):
     try:
