@@ -5,6 +5,7 @@ import os
 import vic.assimilate as va
 from utils.parse import parse_date
 
+
 def parse_commandline():
     parser = argparse.ArgumentParser(description='Determine polynomial '
                                      'relating streamflow and soil '
@@ -16,17 +17,16 @@ def parse_commandline():
     parser.add_argument('--config', required=True,
                         metavar='<configuration file>',
                         help='Configuration file')
-                    
-    
+
     args = parser.parse_args()
 
     configparser = ConfigParser.ConfigParser()
     configparser.read(os.path.expanduser(args.config))
     config = {}
     for section in configparser.sections():
-        for key,value in configparser.items(section):
+        for key, value in configparser.items(section):
             config[key] = value
-            
+
     config['timeofconcentration'] = int(config['timeofconcentration'])
     config['startwindow'] = parse_date(config['startwindow'], '-')
     config['endwindow'] = parse_date(config['endwindow'], '-')
@@ -34,6 +34,7 @@ def parse_commandline():
         config['figuretemplate'] = None
 
     return (args.station, config)
+
 
 def main():
     (station, config) = parse_commandline()
