@@ -91,6 +91,27 @@ def readflowfile(filename, skiprows=0, conversion=1):
     return df
 
 
+def readvicmetfile(filename, startdate, format='ASCII', multipliers=None, sep='\t'):
+    '''Read daily VIC input file with precipitation, minimum temperature,
+        maximum temperature and wind speed.
+        If format can be ASCII or BINARY. If format is BINARY, then a list or
+        tuple with multipliers needs to be provided'''
+
+    colnames = ['prcp', 'tmax', 'tmin', 'wind']
+
+    if format == 'ASCII':
+        # Construct datetime objects
+        df = pd.read_table(filename, header=None, names=colnames, sep=sep)
+        rng = pd.date_range(start=startdate, freq='D', periods=df.shape[0])
+        df = df.set_index(rng)
+    elif format == 'BINARY':
+        raise IOError('Binary read not implemented')
+    else:
+        raise ValueError('{}: Not an understood format'.format(format))
+
+    return df
+
+
 def writestatefile(statefile, state):
     '''Write statefile for VIC 4.0.5 based on a dictionary of state'''
     with open(statefile, 'w') as f:
