@@ -1,4 +1,6 @@
 import collections
+import errno
+import os
 
 def flatten(l):
     """Flatten a list or tuple which may contain lists or tuples"""
@@ -9,3 +11,12 @@ def flatten(l):
                 yield sub
         else:
             yield el
+
+def make_sure_path_exists(path):
+    """Create path, but don't complain if it already exists"""
+    """Note in python 3.x (x>2), this is os.makedirs(path, exist_ok=True)"""
+    try:
+        os.makedirs(path)
+    except OSError as exception:
+        if exception.errno != errno.EEXIST:
+            raise
