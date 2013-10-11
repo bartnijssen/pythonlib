@@ -57,7 +57,7 @@ def main():
             for j in range(len(lons)):
                 if not np.isfinite(forc_data[0, 0, i, j]):
                     if verbose:
-                        print '\tSkipping {:.2f} {:.2f}'.format(lats[i], lons[j])
+                        print '\tSkipping {:.4f} {:.4f}'.format(lats[i], lons[j])
                     continue
                 outfile = outfiletemplate.format(ascdir, lats[i], lons[j])
                 if verbose:
