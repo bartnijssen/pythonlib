@@ -11,7 +11,7 @@ localdir = '/state/partition1/nijssen/sheffield'
 ncdir = basedir
 ascdir = localdir + '/' + 'ascii_masked'
 infiletemplate = '{}/{}_masked/{}_masked_daily_{:04d}-{:04d}.nc'
-outfiletemplate = '{}/data_{:0.2f}_{:0.2f}'
+outfiletemplate = '{}/data_{:0.4f}_{:0.4f}'
 
 fvars = ['prcp', 'tmax', 'tmin', 'wind']
 latvar = 'latitude'
