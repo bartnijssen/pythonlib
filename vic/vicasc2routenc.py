@@ -17,13 +17,16 @@ import datetime as dt
 import time as tm
 from utils.parse import parse_date
 
+verbose = False
+
 def main():
     configfile = get_args()
     config = parse_config(configfile)
-    for section in config.iterkeys():
-        print '{}'.format(section)
-        for key, value in config[section].iteritems():
-            print '{:18s}: {}'.format(key, value)
+    if verbose:
+        for section in config.iterkeys():
+            print '{}'.format(section)
+            for key, value in config[section].iteritems():
+                print '{:18s}: {}'.format(key, value)
     inpath = config['OPTIONS']['inpath']
     domainfile = config['OPTIONS']['domainfile']
     columns = {}
@@ -38,6 +41,7 @@ def main():
     ncvarinfo['name'] = config['OPTIONS']['ncvar_name']
     ncvarinfo['long_name'] = config['OPTIONS']['ncvar_longname']
     ncvarinfo['units'] = config['OPTIONS']['ncvar_units']
+    ncvarinfo['divideby'] = float(config['OPTIONS']['ncvar_divideby'])
     ncformat = config['OPTIONS']['ncformat']
 
     vicasc2routenc(inpath, domainfile, columns, period, outfiletemplate,
@@ -58,7 +62,8 @@ def get_args():
 def parse_config(configfile):
     configparser = ConfigParser.SafeConfigParser(allow_no_value=True)
     configparser.optionxform = str # preserve case of configuration keys
-    print 'Reading {}'.format(configfile)
+    if verbose:
+        print 'Reading {}'.format(configfile)
     configparser.read(configfile)
     config = collections.OrderedDict() # preserve order of entries
     for section in configparser.sections():
@@ -80,8 +85,9 @@ def parse_domainfile(domainfile):
     domain['north'] = lat.max() + 0.5 * domain['latres']
     domain['nx'] = len(lon)
     domain['ny'] = len(lat)
-    for key, value in domain.iteritems():
-        print '{:18s}: {}'.format(key, value)
+    if verbose:
+        for key, value in domain.iteritems():
+            print '{:18s}: {}'.format(key, value)
 
     return domain
 
@@ -97,19 +103,24 @@ def vicasc2routenc(inpath, domainfile, columns, period, outfiletemplate,
     # set up matrices for writing to netcdf file
     data = {}
     data[ncvarinfo['name']] = (np.ones((period['nsteps'], domain['ny'],
-                                    domain['nx']), dtype='float32') *
-                           default_fillvals['f4'])
+                               domain['nx']), dtype='float32') *
+                               default_fillvals['f4'])
     for file in filelist:
-        print "Ingesting: {}".format(file)
+        if verbose:
+            print "Ingesting: {}".format(file)
         indata = np.loadtxt(file, dtype=None)
         fields = file.rsplit('_')
         lon = float(fields[-1])
         lat = float(fields[-2])
         x = int((lon-domain['west'])/domain['lonres'])
         y = int((lat-domain['south'])/domain['latres'])
-        print 'lon: {} lat: {} x: {} y: {}'.format(lon, lat, x, y)
-        data[ncvarinfo['name']][:,y,x] = (indata[:,columns['runoff']] +
-                                      indata[:,columns['baseflow']])
+        if verbose:
+            print 'lon: {} lat: {} x: {} y: {}'.format(lon, lat, x, y)
+            print indata.shape
+            print data[ncvarinfo['name']].shape
+        data[ncvarinfo['name']][:,y,x] = ((indata[:,columns['runoff']] +
+                                           indata[:,columns['baseflow']]) /
+                                           ncvarinfo['divideby'])
 
     # Loop over the days and write for each day.
     start = period['start']
@@ -119,7 +130,8 @@ def vicasc2routenc(inpath, domainfile, columns, period, outfiletemplate,
     return
 
 def write_netcdf(ncfile, domain, period, ncvarinfo, format, data):
-    print "Writing {}".format(ncfile)
+    if verbose:
+        print "Writing {}".format(ncfile)
     nc = Dataset(ncfile, 'w', format=format)
     nc.createDimension('time', None)
     nc.createDimension('lon', domain['nx'])
@@ -135,7 +147,8 @@ def write_netcdf(ncfile, domain, period, ncvarinfo, format, data):
     lat[:] = domain['south'] + np.arange(0.5, domain['ny']) * domain['latres']
 
     for var in data.iterkeys():
-        print 'var: {}'.format(var)
+        if verbose:
+            print 'var: {}'.format(var)
         ncvar = nc.createVariable(var, 'f4', ('time','lat','lon',),
                                   fill_value=default_fillvals['f4'])
         ncvar[:] = data[var]
