@@ -28,6 +28,9 @@ def main():
             for key, value in config[section].iteritems():
                 print '{:18s}: {}'.format(key, value)
     inpath = config['OPTIONS']['inpath']
+    if inpath[-1] != '/':
+        inpath += '/'
+    filelist = glob.glob(inpath + config['OPTIONS']['infiletemplate'] + "*")
     domainfile = config['OPTIONS']['domainfile']
     columns = {}
     columns['runoff'] = int(config['OPTIONS']['runoff_column'])-1
@@ -44,7 +47,7 @@ def main():
     ncvarinfo['divideby'] = float(config['OPTIONS']['ncvar_divideby'])
     ncformat = config['OPTIONS']['ncformat']
 
-    vicasc2routenc(inpath, domainfile, columns, period, outfiletemplate,
+    vicasc2routenc(filelist, domainfile, columns, period, outfiletemplate,
                    ncvarinfo, ncformat)
 
     return
@@ -91,13 +94,10 @@ def parse_domainfile(domainfile):
 
     return domain
 
-def vicasc2routenc(inpath, domainfile, columns, period, outfiletemplate,
+def vicasc2routenc(filelist, domainfile, columns, period, outfiletemplate,
                    ncvarinfo, ncformat):
     """Convert VIC ASCII to netCDF for use by the python routing program"""
     domain = parse_domainfile(domainfile)
-    if inpath[-1] != '/':
-        inpath += '/'
-    filelist = glob.glob(inpath + "*")
     period['nsteps'] = ((period['end']-period['start']).days /
                         period['interval'].days + 1)
     # set up matrices for writing to netcdf file
