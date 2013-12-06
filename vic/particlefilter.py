@@ -5,6 +5,7 @@ import ConfigParser
 import copy
 import datetime as dt
 import glob
+import logging
 import multiprocessing
 import netCDF4
 import numpy as np
@@ -18,9 +19,8 @@ from utils.general import flatten, make_sure_path_exists
 from utils.parse import parse_date
 from vic.vicasc2routenc import vicasc2routenc
 from vic.vicasc2nc import vicasc2nc, filterPick
-#import uuid
 
-verbose = True
+loglevel_default = 'info'
 
 def run(particle):
     particle.run()
@@ -51,7 +51,7 @@ def convertvicasc2route(vicconfig, routeconfig, vicasc2routencconfig):
     ncvarinfo['units'] = vicasc2routencconfig['ncvar_units']
     ncvarinfo['divideby'] = float(vicasc2routencconfig['ncvar_divideby'])
     ncformat = vicasc2routencconfig['ncformat']
-    print 'Converting output: {}'.format(outfiletemplate)
+    logging.debug('Converting output: {}'.format(outfiletemplate))
     vicasc2routenc(filelist, domainfile, columns, period, outfiletemplate,
                    ncvarinfo, ncformat)
 
@@ -128,7 +128,7 @@ class Simulation(object):
         if self.exe is None:
             raise SimulationError('No executable defined')
         else:
-            print 'Running: {}'.format(self.exe)
+            logging.debug('Running: {}'.format(self.exe))
         fargs = [self.exe]
         if self.args:
             fargs.append(self.args)
@@ -140,7 +140,7 @@ class Simulation(object):
             loghandle = self.logfile
         elif self.logfile is not None:
             raise TypeError('logfile must be a filename, filehandle, or None')
-        print 'Going to run {}'.format(fargs)
+        logging.debug('Going to run {}'.format(fargs))
         returnval = subprocess.call(fargs, stdout=loghandle, stderr=loghandle)
         if returnval != 0:
             raise SimulationError('return value not zero')
@@ -154,7 +154,7 @@ class RouteSimulation(Simulation):
         configparser = ConfigParser.SafeConfigParser(allow_no_value=True)
         configparser.optionxform = str # preserve case of configuration keys
         configurationfile = config['GLOBALTEMPLATE']
-        print 'Reading {}'.format(configurationfile)
+        logging.debug('Reading {}'.format(configurationfile))
         configparser.read(configurationfile)
         configtemplate = collections.OrderedDict() # preserve order of entries
         for section in configparser.sections():
@@ -165,7 +165,7 @@ class RouteSimulation(Simulation):
             fields = key.split('|')
             if len(fields) == 3:
                 configtemplate[fields[1]][fields[2]] = value
-        print 'Writing {}'.format(self.configfile)
+        logging.debug('Writing {}'.format(self.configfile))
         with open(self.configfile, 'w') as f:
             for section in configtemplate.keys():
                 f.write('#-- ====================================== --#\n')
@@ -176,8 +176,8 @@ class RouteSimulation(Simulation):
 class VicSimulation(Simulation):
 
     def writeconfig(self, config):
-        print 'Reading {}'.format(config['GLOBALTEMPLATE'])
-        print 'Writing {}'.format(self.configfile)
+        logging.debug('Reading {}'.format(config['GLOBALTEMPLATE']))
+        logging.debug('Writing {}'.format(self.configfile))
         with open(config['GLOBALTEMPLATE'], 'r') as f, open(self.configfile, 'w') as g:
             for line in f:
                 for key, value in config.items():
@@ -187,14 +187,11 @@ class VicSimulation(Simulation):
 
 class ParticleFilter(object):
     """Particle filter"""
-    def __init__(self, configurationfile):
+    def __init__(self, configparser, configurationfile):
         """Initialize a particle filter based on a configurationfile"""
         self.pool = None
         # Parse the configuration file
-        configparser = ConfigParser.SafeConfigParser(allow_no_value=True)
-        configparser.optionxform = str # preserve case of configuration keys
-        print 'Reading {}'.format(configurationfile)
-        configparser.read(configurationfile)
+        self.configfile = configurationfile
         self.config = collections.OrderedDict() # preserve order of entries
         for section in configparser.sections():
             self.config[section] = collections.OrderedDict()
@@ -207,6 +204,7 @@ class ParticleFilter(object):
             self.poolsize = configparser.getint('COMPUTING','poolsize')
 
         self.ID = self.config['FILTER']['runid']
+        logging.info('Initializing particle filter: {}'.format(self.ID))
 
         ncvarinfo = {}
         varlist = filterPick(self.config['VICASC2NC'].keys(), re.compile('^ncvar.*_name$'))
@@ -229,6 +227,9 @@ class ParticleFilter(object):
         self.backstep = dt.timedelta(configparser.getint('SIMULATION',
                                                          'backstep'))
 
+        # number of timestep to evaluate
+        self.neval = configparser.getint('FILTER','neval')
+
         # Initialize particles
         self.np = configparser.getint('FILTER', 'np')
         self.particles = [VicParticle(i+1, 1./self.np) for i in range(self.np)]
@@ -239,30 +240,30 @@ class ParticleFilter(object):
             p.refvar = self.config['FILTER']['referencevar']
             p.initstatefile = {}
             p.initstatefile['vic'] = self.config['VICCONFIG']['INIT_STATE'].format(p.ID)
-            p.initstatefile['route'] = \
-                self.config['ROUTECONFIG']['SECTION|INITIAL_STATE|FILE_NAME'].\
-                format(p.ID)
+            if self.config['ROUTECONFIG']['SECTION|OPTIONS|RUN_TYPE'].lower() == 'startup':
+                p.initstatefile['route'] = \
+                    self.config['ROUTECONFIG']['SECTION|INITIAL_STATE|FILE_NAME'].\
+                    format(p.ID)
+            p.neval = self.neval
         self.normalize_weights()
+        logging.info('Initialized {} particles'.format(self.np))
 
         # set up run and archive paths for particles
         runpath = self.config['FILTER']['rundir']
         archivepath = self.config['FILTER']['archivedir']
-        subdirs = ['log', 'history']
+        subdirs = ['log', 'history', 'settings']
         self.paths = {}
         self.paths['run'] = {}
         self.paths['archive'] = {}
         for subdir in subdirs:
             self.paths['run'][subdir] = '{}/{}'.format(runpath, subdir)
             self.paths['archive'][subdir] = '{}/{}'.format(archivepath, subdir)
-        if verbose:
-            print 'Creating paths for filter {}:'.format(self.ID)
-            for topdir, dirdict in self.paths.iteritems():
-                    print '\t{:8s}:'.format(topdir)
-                    for key, val in dirdict.iteritems():
-                        print '\t\t{:6s}: {}'.format(key, val)
-            for topdir, dirdict in self.paths.iteritems():
-                for key, val in dirdict.iteritems():
-                    make_sure_path_exists(val)
+        logging.debug('Creating paths for filter {}:'.format(self.ID))
+        for topdir, dirdict in self.paths.iteritems():
+            logging.debug('\t{:8s}:'.format(topdir))
+            for key, val in dirdict.iteritems():
+                logging.debug('\t\t{:6s}: {}'.format(key, val))
+                make_sure_path_exists(val)
 
         subdirs = ['config', 'data', 'log', 'state', 'history']
         for p in self.particles:
@@ -274,14 +275,11 @@ class ParticleFilter(object):
             for subdir in subdirs:
                 p.paths['run'][subdir] = '{}/{}'.format(runpath, subdir)
                 p.paths['archive'][subdir] = '{}/{}'.format(archivepath, subdir)
-            if verbose:
-                print 'Creating paths for particle {:03d}:'.format(p.ID)
-                for topdir, dirdict in p.paths.iteritems():
-                    print '\t{:8s}:'.format(topdir)
-                    for key, val in dirdict.iteritems():
-                        print '\t\t{:6s}: {}'.format(key, val)
+            logging.debug('Creating paths for particle {:03d}:'.format(p.ID))
             for topdir, dirdict in p.paths.iteritems():
+                logging.debug('\t{:8s}:'.format(topdir))
                 for key, val in dirdict.iteritems():
+                    logging.debug('\t\t{:6s}: {}'.format(key, val))
                     make_sure_path_exists(val)
 
         # set history file for filter
@@ -292,6 +290,8 @@ class ParticleFilter(object):
         for p in self.particles:
             filename = '{}.{:03d}.history'.format(self.ID, p.ID)
             p.hist = open(os.path.join(p.paths['run']['history'], filename), 'w')
+
+        logging.info('Initialization complete')
 
     def __repr__(self):
         bstr = '{}\n'.format(self.config)
@@ -311,6 +311,9 @@ class ParticleFilter(object):
         self.runstart = self.now
         self.runend = self.runstart + self.runlength - dt.timedelta(1)
         self.runstate = self.runend - self.backstep
+        logging.info('{} - {} - {}'.format(self.runstart.strftime('%Y-%m-%d'),
+                                           self.runstate.strftime('%Y-%m-%d'),
+                                           self.runend.strftime('%Y-%m-%d')))
 
         # write the configuration setting
         self.config['VICCONFIG']['STARTYEAR'] = self.runstart.year
@@ -358,31 +361,33 @@ class ParticleFilter(object):
             if r.get() is not None:
                 raise(SimulationError(r.get()))
 
-        print 'Evaluating particles'
+        logging.debug('Evaluating particles')
         self.evaluate()
         self.normalize_weights()
         self.resample()
-        print '{Particle: Weight ==> resample'
+        logging.debug('{Particle: Weight ==> resample')
         for p in self.particles:
-            print '{:03d}: {} ==> {:03d}'.format(p.ID, p.weight, p.sample.ID)
+            logging.debug('{:03d}: {} ==> {:03d}'.format(p.ID, p.weight, p.sample.ID))
             p.writehistory(self.runstart, self.runstate, self.runend)
             p.updateinitstate(self.ID, self.runstart, self.runstate)
 
     def archiverun(self):
-        if verbose:
-            print 'Archiving {}: {}-{}'.\
-                format(self.ID, self.runstart.strftime('%Y-%m-%d'),
-                       self.runend.strftime('%Y-%m-%d'))
+        logging.debug('Archiving {}: {}-{}'.\
+                      format(self.ID, self.runstart.strftime('%Y-%m-%d'),
+                             self.runend.strftime('%Y-%m-%d')))
         for p in self.particles:
             p.archiverun()
 
     def archivefinal(self):
-        if verbose:
-            print 'Final archiving {}: {}-{}'.\
-                format(self.ID, self.start.strftime('%Y-%m-%d'),
-                       self.end.strftime('%Y-%m-%d'))
+        logging.debug('Final archiving {}: {}-{}'.\
+                      format(self.ID, self.start.strftime('%Y-%m-%d'),
+                             self.end.strftime('%Y-%m-%d')))
         for p in self.particles:
             p.archivefinal()
+
+        # copy the configuration file and the main particlefilter.py script
+        shutil.copy(self.configfile, self.paths['archive']['settings'])
+        shutil.copy(os.path.abspath(__file__), self.paths['archive']['settings'])
 
         filedict = {}
         # move the history file
@@ -398,25 +403,28 @@ class ParticleFilter(object):
                                    os.path.basename(src))
             filedict[src] = dst
 
-        if verbose:
-            print '\t  Files to be moved:'
-            for src, dst in filedict.iteritems():
-                print '\t    {} ===> {}'.format(src, dst)
 
         # move the files
+        logging.debug('\t  Files to be moved:')
         for src, dst in filedict.iteritems():
-                shutil.move(src, dst)
+            logging.debug('\t    {} ===> {}'.format(src, dst))
+            shutil.move(src, dst)
 
         # close history file
         self.hist.close()
 
     def evaluate(self):
-        print 'Reading reference file: {}'.format(self.config['FILTER']['referencefile'])
-        dfref = readflow(self.config['FILTER']['referencefile'],
+        reffile = self.config['FILTER']['referencefile'].format(self.runend.strftime('%Y-%m-%d'))
+        logging.debug('Reading reference file: {}'.format(reffile))
+        dfref = readflow(reffile,
                          self.config['FILTER']['referencevar'],
                          self.runstart, self.runend + dt.timedelta(1))
+        dfref = dfref[-(self.neval):]
         for p in self.particles:
             p.evaluate(dfref)
+
+    def finalize(self):
+        self.archivefinal()
 
     def normalize_weights(self):
         total = np.array([self.particles[i].weight for i in range(self.np)]).sum()
@@ -430,14 +438,25 @@ class ParticleFilter(object):
         self.hist.write('{} {} {}:\n'.format(self.runstart.strftime('%Y-%m-%d'),
                                              self.runstate.strftime('%Y-%m-%d'),
                                              self.runend.strftime('%Y-%m-%d')))
-        self.hist.write('weights ({}): {}\n'.format(len(weights), weights))
-        self.hist.write('cdf    : {}\n'.format(cdf))
-        self.hist.write('uniform: {}\n'.format(unif))
+        self.hist.write('weights ({}): {}\n'.format(len(weights), list(weights)))
+        self.hist.write('cdf     ({}): {}\n'.format(len(cdf), list(cdf)))
+        self.hist.write('uniform ({}): {}\n'.format(len(unif), list(unif)))
         samples = [np.where(cdf > x)[0][0] for x in unif]
-        self.hist.write('set: {}\n'.format(set(samples)))
-        routestatedate = self.runend + dt.timedelta(1)
+        # samples = np.arange(self.np)
+        # np.random.shuffle(samples)
+        self.hist.write('samples ({}): {}\n'.format(len(samples), list(samples)))
+        self.hist.write('set     ({}): {}\n'.format(len(set(samples)), set(samples)))
         for p, s in zip(self.particles, samples):
             p.sample = self.particles[s]
+            logging.debug('\t{:03d}==>{:03d}'.format(p.ID, p.sample.ID))
+        # for p in self.particles:
+        #     p.sample = p
+
+    def runfilter(self):
+        while (self.now + self.runlength) <= (self.end + dt.timedelta(1)):
+            self.run()
+            self.archiverun()
+            self.advance()
 
 class Particle(object):
     """Single particle in a particular filter"""
@@ -447,7 +466,7 @@ class Particle(object):
         self.ID = ID
         self.weight = weight
         self.state = state
-        print 'initialized particle {}'.format(self.ID)
+        logging.debug('initialized particle {}'.format(self.ID))
 
     def __repr__(self):
         bstr = '{}({}): {}'.format(self.ID, self.weight, self.state)
@@ -484,8 +503,7 @@ class VicParticle(Particle):
         self.route = {'exe': None, 'infile': None, 'logfile': None}
 
     def archiverun(self):
-        if verbose:
-            print '\tArchiving particle {:03d}'.format(self.ID)
+        logging.debug('\tArchiving particle {:03d}'.format(self.ID))
         # first the moves
         filedict = {}
         # list config files
@@ -508,40 +526,29 @@ class VicParticle(Particle):
             dst = os.path.join(self.paths['archive']['state'],
                                    os.path.basename(src))
             filedict[src] = dst
-        # list log files
-        filelist = glob.glob('{}/*'.format(self.paths['run']['log']))
-        for src in filelist:
-            dst = os.path.join(self.paths['archive']['log'],
-                                   os.path.basename(src))
-            filedict[src] = dst
-
-        if verbose:
-            print '\t  Files to be moved:'
-            for src, dst in filedict.iteritems():
-                print '\t    {} ===> {}'.format(src, dst)
 
         # move the files
+        logging.debug('\t  Files to be moved:')
         for src, dst in filedict.iteritems():
-                shutil.move(src, dst)
+            logging.debug('\t    {} ===> {}'.format(src, dst))
+            shutil.move(src, dst)
 
         # then the file to be deleted
         # data logs from routing program
         filelist = glob.glob('{}/logs/*'.format(self.paths['run']['data']))
         # rpointer files from routing program
         filelist += glob.glob('{}/restarts/rpointer'.format(self.paths['run']['data']))
-
-        if verbose:
-            print '\t  Files to be removed:'
-            for src in filelist:
-                print '\t    {}'.format(src)
+        # data logs from VIC and routing
+        filelist += glob.glob('{}/*'.format(self.paths['run']['log']))
 
         # delete the files
+        logging.debug('\t  Files to be removed:')
         for src in filelist:
+            logging.debug('\t    {}'.format(src))
             os.remove(src)
 
     def archivefinal(self):
-        if verbose:
-            print '\tFinal archiving particle {:03d}'.format(self.ID)
+        logging.debug('\tFinal archiving particle {:03d}'.format(self.ID))
         # close the history file
         self.hist.close()
 
@@ -552,14 +559,12 @@ class VicParticle(Particle):
             dst = os.path.join(self.paths['archive']['history'],
                                    os.path.basename(src))
             filedict[src] = dst
-        if verbose:
-            print '\t  Files to be moved:'
-            for src, dst in filedict.iteritems():
-                print '\t    {} ===> {}'.format(src, dst)
 
         # move the files
+        logging.debug('\t  Files to be moved:')
         for src, dst in filedict.iteritems():
-                shutil.move(src, dst)
+            logging.debug('\t    {} ===> {}'.format(src, dst))
+            shutil.move(src, dst)
 
     def configrun(self, vicconfig, routeconfig, vicasc2routencconfig, vicasc2ncconfig):
         # Personalize the config info
@@ -595,8 +600,9 @@ class VicParticle(Particle):
             self.paths['run']['data']
         self.routeconfig['SECTION|INPUT_FORCINGS|DATL_FILE'] = \
             'rvic.{:03d}.{}.{}.nc'.format(self.ID, startstr, endstr)
-        self.routeconfig['SECTION|INITIAL_STATE|FILE_NAME'] = \
-            self.initstatefile['route']
+        if self.routeconfig['SECTION|OPTIONS|RUN_TYPE'].lower() == 'startup':
+            self.routeconfig['SECTION|INITIAL_STATE|FILE_NAME'] = \
+                self.initstatefile['route']
 
         self.route['resultfile'] = self.routeconfig['SECTION|OPTIONS|CASE_DIR'] + \
                                    '/hist/{}.rvic.h0a.{}.nc'.\
@@ -621,12 +627,26 @@ class VicParticle(Particle):
                                         self.route['logfile'])
 
     def evaluate(self, dfref):
-        print '{:03d}: Reading result file: {}'.format(self.ID,
-                                                       self.route['resultfile'])
+        logging.debug('{:03d}: Reading result file: {}'.\
+                      format(self.ID, self.route['resultfile']))
+
         df = readflow(self.route['resultfile'], self.refvar)
-        self.objective = np.mean((df-dfref)**2)
+        df = df[-(self.neval):]
+        # relative root mean squared error (smaller is better)
+        # rrmse = np.sqrt(np.mean((df-dfref)**2))/np.mean(dfref)
+        # normalized number of sign crossings (smaller is better)
+        # ncs = ((np.sign(np.diff(df.values)) !=
+        #         np.sign(np.diff(dfref.values))).sum() /
+        #        (len(df)-1))
+        # self.objective = 0.75*rrmse + 0.25*ncs
+
+        # root mean squared error (smaller is better)
+        self.objective = np.sqrt(np.mean((df-dfref)**2))
+
         self.weight = 1./(self.objective+0.001)
-        print '{:03d}: {} {}'.format(self.ID, self.objective, self.weight)
+        # self.objective = 1
+        # self.weight = 1
+        logging.debug('{:03d}: {} {}'.format(self.ID, self.objective, self.weight))
 
     def run(self):
         """Run a particle"""
@@ -636,10 +656,10 @@ class VicParticle(Particle):
 
         # Convert the VIC flux files into netCDF files that can be read by the
         # routing program
-        print 'Completed VIC simulation starting conversion to netcdf'
+        logging.debug('Completed VIC simulation starting conversion to netcdf')
         convertvicasc2route(self.vicconfig, self.routeconfig, self.vicasc2routencconfig)
         convertvicasc2nc(self.vicconfig, self.routeconfig['SECTION|DOMAIN|FILE_NAME'], self.vicasc2ncconfig)
-        print 'Completed conversion to netcdf removing VIC flux files'
+        logging.debug('Completed conversion to netcdf removing VIC flux files')
 
         # remove VIC files now that they have been converted
         inpath = self.vicconfig['RESULT_DIR']
@@ -649,9 +669,9 @@ class VicParticle(Particle):
         for f in filelist:
             os.remove(f)
 
-        print 'Going to run the routing part: {}'.format(self.route)
+        logging.debug('Going to run the routing part: {}'.format(self.route))
         # Route the flows
-        print 'Logfile: {}'.format(self.route['logfile'])
+        logging.debug('Logfile: {}'.format(self.route['logfile']))
         self.routesim.writeconfig(self.routeconfig)
         self.routesim.run()
 
@@ -668,9 +688,10 @@ class VicParticle(Particle):
                    runid,
                    self.sample.ID,
                    routestatedate.strftime('%Y-%m-%d-%H-%M-%S'))
-        print '{:03d}({:03d}): {:40s} {:40s}'.\
-              format(self.ID, self.sample.ID, self.initstatefile['vic'],
-                     self.initstatefile['route'])
+        logging.debug('{:03d}({:03d}): {:40s} {:40s}'.\
+                      format(self.ID, self.sample.ID,
+                             self.initstatefile['vic'],
+                             self.initstatefile['route']))
 
     def writehistory(self, runstart, runstate, runend):
         hstr = '{:03d} {} {} {} {} {} {:03d}'.\
@@ -684,18 +705,33 @@ class VicParticle(Particle):
         self.hist.write('{}\n'.format(hstr))
 
 if __name__ == '__main__':
-    pf = ParticleFilter('/Users/nijssen/Dropbox/vicpf/config/gunnison/particlefilter/gunnison_pf.cfg')
-    print pf
-    for i in range(100):
-        print '#################################################'
-        print '#################################################'
-        print '=======>>> Advancing filter {:04d}'.format(i)
-        print '#################################################'
-        print '#################################################'
-        pf.run()
-        pf.archiverun()
-        pf.advance()
-    pf.archivefinal()
+    # get configuration file from command-line
+    try:
+        configurationfile = sys.argv[1]
+    except:
+        sys.exit('Usage: {} <configuration file>'.format(sys.argv[0]))
+
+    # parse configuration file
+    configparser = ConfigParser.SafeConfigParser(allow_no_value=True)
+    configparser.optionxform = str # preserve case of configuration keys
+    configparser.read(configurationfile)
+
+    # initiate logging
+    logfile = configparser.get('FILTER', 'logfile')
+    try:
+        loglevel = configparser.get('FILTER', 'loglevel').upper()
+    except:
+        loglevel = loglevel_default.upper()
+    loglevel = getattr(logging, loglevel)
+    logging.basicConfig(filename=logfile, filemode='w', level=loglevel)
+    logging.info('Parsed configuration file {}'.format(configurationfile))
+
+    # run filter
+    pf = ParticleFilter(configparser, configurationfile)
+    pf.runfilter()
+    pf.finalize()
+
+    logging.info('Particle filter completed')
 
 
 
