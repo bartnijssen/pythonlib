@@ -420,11 +420,13 @@ class ParticleFilter(object):
                          self.config['FILTER']['referencevar'],
                          self.runstart, self.runend + dt.timedelta(1))
         dfref = dfref[-(self.neval):]
+        # dfref = None
         for p in self.particles:
             p.evaluate(dfref)
 
     def finalize(self):
         self.archivefinal()
+        shutil.rmtree(self.config['FILTER']['rundir'])
 
     def normalize_weights(self):
         total = np.array([self.particles[i].weight for i in range(self.np)]).sum()
@@ -438,12 +440,13 @@ class ParticleFilter(object):
         self.hist.write('{} {} {}:\n'.format(self.runstart.strftime('%Y-%m-%d'),
                                              self.runstate.strftime('%Y-%m-%d'),
                                              self.runend.strftime('%Y-%m-%d')))
-        self.hist.write('weights ({}): {}\n'.format(len(weights), list(weights)))
-        self.hist.write('cdf     ({}): {}\n'.format(len(cdf), list(cdf)))
-        self.hist.write('uniform ({}): {}\n'.format(len(unif), list(unif)))
-        samples = [np.where(cdf > x)[0][0] for x in unif]
+        # self.hist.write('weights ({}): {}\n'.format(len(weights), list(weights)))
+        # self.hist.write('cdf     ({}): {}\n'.format(len(cdf), list(cdf)))
+        # self.hist.write('uniform ({}): {}\n'.format(len(unif), list(unif)))
+        # samples = [np.where(cdf > x)[0][0] for x in unif]
         # samples = np.arange(self.np)
         # np.random.shuffle(samples)
+        samples = np.ones(self.np, dtype=int) * (self.np-1);
         self.hist.write('samples ({}): {}\n'.format(len(samples), list(samples)))
         self.hist.write('set     ({}): {}\n'.format(len(set(samples)), set(samples)))
         for p, s in zip(self.particles, samples):
@@ -451,6 +454,7 @@ class ParticleFilter(object):
             logging.debug('\t{:03d}==>{:03d}'.format(p.ID, p.sample.ID))
         # for p in self.particles:
         #     p.sample = p
+        #     logging.debug('\t{:03d}==>{:03d}'.format(p.ID, p.sample.ID))
 
     def runfilter(self):
         while (self.now + self.runlength) <= (self.end + dt.timedelta(1)):
@@ -632,6 +636,7 @@ class VicParticle(Particle):
 
         df = readflow(self.route['resultfile'], self.refvar)
         df = df[-(self.neval):]
+
         # relative root mean squared error (smaller is better)
         # rrmse = np.sqrt(np.mean((df-dfref)**2))/np.mean(dfref)
         # normalized number of sign crossings (smaller is better)
