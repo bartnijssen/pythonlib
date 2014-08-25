@@ -181,8 +181,8 @@ class VicSimulation(Simulation):
         with open(config['GLOBALTEMPLATE'], 'r') as f, open(self.configfile, 'w') as g:
             for line in f:
                 for key, value in config.items():
-                    if re.match(key, line):
-                       line = '{:20s} {}\n'.format(key, value)
+                    if re.match(r'\b{}\b'.format(key), line):
+                        line = '{:20s} {}\n'.format(key, value)
                 g.write(line)
 
 class ParticleFilter(object):
